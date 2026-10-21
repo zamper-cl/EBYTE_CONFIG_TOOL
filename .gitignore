@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+.env
+*.log
+docs/E95-DTU(900SLxx-485)_UserManual_EN_V1.1.pdf
+docs/E95-DTU(900SLxx-485)_UserManual_EN_V1.1.md
+docs/E95-DTU(900SLxx-485)_UserManual_ES_V1.1.md
+docs/img/*
+!docs/img/modo-config.jpeg
+bin_ebyte/
