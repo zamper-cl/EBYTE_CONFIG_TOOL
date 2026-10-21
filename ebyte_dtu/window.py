@@ -305,6 +305,9 @@ class MainWindow(QMainWindow):
         self._pong_timer = QTimer(self)
         self._pong_timer.setSingleShot(True)
         self._pong_timer.timeout.connect(self._pong_timeout)
+        self._repeat_timer = QTimer(self)
+        self._repeat_timer.setInterval(5000)
+        self._repeat_timer.timeout.connect(self._repeat_send)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -314,6 +317,8 @@ class MainWindow(QMainWindow):
         tabs.addTab(self._build_link_tab(), "Enlace")
         tabs.addTab(self._build_help_tab(), "Ayuda")
         tabs.addTab(self._build_channel_policy_tab(), "Configuración")
+        self._tabs = tabs
+        tabs.currentChanged.connect(self._on_tab_changed)
         root.addWidget(tabs)
 
         self._refresh_ports()
@@ -343,6 +348,7 @@ class MainWindow(QMainWindow):
             self._select_combo(self.power_combo, params.power_index)
             self._select_combo(self.mode_combo, params.fixed_point)
             self._select_combo(self.relay_combo, params.relay)
+            self._sync_usage_from_relay(params.relay)
             self._select_combo(self.lbt_combo, params.lbt)
             self._select_combo(self.packet_rssi_combo, params.packet_rssi)
             self._select_combo(self.channel_rssi_combo, params.channel_rssi)
@@ -461,6 +467,9 @@ class MainWindow(QMainWindow):
         self.send_button = QPushButton("Enviar")
         self.send_button.clicked.connect(self._send_payload)
         mode_row.addWidget(self.send_button)
+        self.repeat_button = QPushButton("Enviar cada 5 segundos")
+        self.repeat_button.clicked.connect(self._toggle_repeat)
+        mode_row.addWidget(self.repeat_button)
         mode_row.addStretch(1)
         root.addLayout(mode_row)
 
@@ -566,7 +575,32 @@ class MainWindow(QMainWindow):
 
     def _build_fields(self) -> QGroupBox:
         box = QGroupBox("Configuración local")
-        grid = QGridLayout(box)
+        outer = QVBoxLayout(box)
+        usage_row = QHBoxLayout()
+        usage_row.addWidget(QLabel("Modo de uso"))
+        self.usage_combo = _combo(
+            ("transparent", "wor", "relay"),
+            lambda value: {
+                "transparent": "Transparente",
+                "wor": "WOR",
+                "relay": "Repetidor",
+            }[value],
+        )
+        self.usage_combo.setToolTip(
+            "Transparente y WOR solo cambian la pantalla. "
+            "Repetidor activa el reenvío por LoRa."
+        )
+        self.usage_combo.currentIndexChanged.connect(self._on_usage_changed)
+        usage_row.addWidget(self.usage_combo, 1)
+        outer.addLayout(usage_row)
+        self.usage_note = QLabel(
+            "Esta estación no envía ni recibe Modbus. Solo retransmite por LoRa "
+            "lo que llega, de una red a la otra."
+        )
+        self.usage_note.setWordWrap(True)
+        outer.addWidget(self.usage_note)
+        grid = QGridLayout()
+        outer.addLayout(grid)
 
         self.baud_combo = _combo(BAUD_RATES, lambda value: f"{value} bps")
         self.parity_combo = _combo(PARITIES, str)
@@ -615,10 +649,13 @@ class MainWindow(QMainWindow):
             ("RSSI de canal", self.channel_rssi_combo),
             ("Clave", self.key_spin),
         )
+        self._field_labels = {}
         for index, (label, widget) in enumerate(fields):
             row = index // 4
             column = (index % 4) * 2
-            grid.addWidget(QLabel(label), row, column)
+            label_widget = QLabel(label)
+            self._field_labels[widget] = label_widget
+            grid.addWidget(label_widget, row, column)
             grid.addWidget(widget, row, column + 1)
             if isinstance(widget, QComboBox):
                 widget.currentIndexChanged.connect(self._on_field_changed)
@@ -626,7 +663,48 @@ class MainWindow(QMainWindow):
                 widget.valueChanged.connect(self._on_field_changed)
         for column in (1, 3, 5, 7):
             grid.setColumnStretch(column, 1)
+        self._apply_usage_visibility()
         return box
+
+    def _apply_usage_visibility(self) -> None:
+        mode = self.usage_combo.currentData()
+        show_wor = mode == "wor"
+        for widget in (self.wor_role_combo, self.wor_cycle_combo):
+            widget.setVisible(show_wor)
+            self._field_labels[widget].setVisible(show_wor)
+        self.relay_combo.setVisible(False)
+        self._field_labels[self.relay_combo].setVisible(False)
+        show_net = mode != "relay"
+        self.net_id_spin.setVisible(show_net)
+        self._field_labels[self.net_id_spin].setVisible(show_net)
+        address_label = self._field_labels[self.address_spin]
+        if mode == "relay":
+            address_label.setText("Par NETID")
+            self.address_spin.setToolTip(
+                "El byte alto y el bajo son los dos NETID. "
+                "Los identificadores 02 y 10 se escriben como 0x020A, es decir 522."
+            )
+        else:
+            address_label.setText("Dirección")
+            self.address_spin.setToolTip("")
+        self.usage_note.setVisible(mode == "relay")
+
+    def _on_usage_changed(self) -> None:
+        self._apply_usage_visibility()
+        if self._loading:
+            return
+        self._select_combo(self.relay_combo, self.usage_combo.currentData() == "relay")
+        self._on_field_changed()
+
+    def _sync_usage_from_relay(self, relay: bool) -> None:
+        current = self.usage_combo.currentData()
+        if relay:
+            target = "relay"
+        elif current == "relay":
+            target = "transparent"
+        else:
+            return
+        self._select_combo(self.usage_combo, target)
 
     def _build_help_tab(self) -> QWidget:
         page = QWidget()
@@ -669,6 +747,68 @@ class MainWindow(QMainWindow):
             )
         )
         layout.addWidget(_modes_table())
+        layout.addWidget(
+            _help_body(
+                "Modo 0, transparente. M0 y M1 apagados. Lo que entra por el "
+                "puerto serie sale por el aire, y lo que llega por el aire sale "
+                "por el puerto serie. Es el valor de fábrica y el que se usa "
+                "para Modbus y para el enlace.\n"
+                "Modo 1, WOR. M0 encendido y M1 apagado. El camino de los datos "
+                "es el mismo, pero el radio puede dormir y despertar por el aire.\n"
+                "Modo 2, configuración. M1 encendido y M0 apagado. Solo en este "
+                "modo se leen y graban los registros, siempre a 9600 8N1.\n"
+                "Modo 3, sueño. M0 y M1 encendidos. No transmite ni recibe."
+            )
+        )
+        layout.addWidget(_help_heading("Modo de uso"))
+        layout.addWidget(
+            _help_body(
+                "El selector Modo de uso no cambia las luces del equipo. Solo "
+                "muestra los controles que corresponden.\n"
+                "Transparente oculta el rol y el ciclo WOR. Sirve para el uso "
+                "habitual.\n"
+                "WOR muestra el rol y el ciclo. Hay que dejar el radio en modo 1 "
+                "para que esos valores actúen.\n"
+                "Repetidor activa el reenvío. La estación no envía ni recibe "
+                "Modbus: solo retransmite por LoRa lo que llega, de una red a la "
+                "otra. La dirección pasa a ser el par de NETID."
+            )
+        )
+        layout.addWidget(_help_heading("Qué es WOR"))
+        layout.addWidget(
+            _help_body(
+                "WOR (Wake on Radio) reduce el consumo. El receptor no escucha "
+                "todo el tiempo: despierta cada cierto ciclo, entre 500 y 4000 ms. "
+                "Un ciclo más largo gasta menos y demora más los datos. El emisor "
+                "y el receptor tienen que usar el mismo ciclo.\n"
+                "El transmisor agrega un preámbulo de despertar antes de enviar, "
+                "para que el receptor dormido alcance a oírlo.\n"
+                "El receptor, después de entregar un paquete por el puerto serie, "
+                "permanece despierto 1000 ms. En ese lapso se puede contestar. "
+                "Cada byte recibido por el serie reinicia esos 1000 ms."
+            )
+        )
+        layout.addWidget(_help_heading("Qué es LBT"))
+        layout.addWidget(
+            _help_body(
+                "LBT (Listen Before Talk) escucha el canal antes de transmitir. "
+                "Si hay tráfico, espera, y así evita pisar otra emisión. La espera "
+                "puede retrasar los datos. A los 2 segundos transmite igual."
+            )
+        )
+        layout.addWidget(_help_heading("Modo de transmisión"))
+        layout.addWidget(
+            _help_body(
+                "Normal envía por el aire, tal como llegan, los bytes del puerto "
+                "serie. Los recibe cualquier radio del mismo canal, dirección y "
+                "NET ID. La dirección FFFF es de difusión: la oyen todas las "
+                "estaciones de ese canal.\n"
+                "Punto fijo usa los tres primeros bytes de cada envío como "
+                "destino: dirección alta, dirección baja y canal. Solo el radio "
+                "con esa dirección y ese canal entrega el resto del mensaje. "
+                "Esos tres bytes no forman parte de los datos útiles."
+            )
+        )
         layout.addWidget(_help_heading("Modo de configuración"))
         layout.addWidget(
             _help_body(
@@ -857,6 +997,7 @@ class MainWindow(QMainWindow):
         self._link_open = False
         self._waiting_pong = False
         self._pong_timer.stop()
+        self._stop_repeat()
         self.port_state.setText("Cerrado")
         self.link_port_state.setText("Cerrado")
         if not self.ping_pong_check.isChecked():
@@ -864,6 +1005,7 @@ class MainWindow(QMainWindow):
         self._sync_port_buttons()
 
     def _on_link_failed(self, message: str) -> None:
+        self._stop_repeat()
         self._append_link(message)
         self._on_job_finished()
         QMessageBox.warning(self, "Enlace", message)
@@ -1036,6 +1178,7 @@ class MainWindow(QMainWindow):
         self.link_parity_combo.setEnabled(enabled and not self._link_open)
         self.copy_settings_button.setEnabled(enabled and not self._link_open)
         self.send_button.setEnabled(enabled and self._link_open)
+        self.repeat_button.setEnabled(enabled and self._link_open)
         self.ping_button.setEnabled(enabled and self._link_open)
         self.ping_pong_check.setEnabled(enabled)
 
@@ -1057,16 +1200,39 @@ class MainWindow(QMainWindow):
         parity = self.link_parity_combo.currentData()
         self._submit("open_link", (port, baud, parity, self.ping_pong_check.isChecked()))
 
-    def _send_payload(self) -> None:
+    def _send_payload(self) -> bool:
         if not self._link_open:
             QMessageBox.warning(self, "Enlace", "Abra el puerto antes de enviar.")
-            return
+            return False
         try:
             data = self.composed_payload()
         except LinkError as exc:
             QMessageBox.warning(self, "Enlace", str(exc))
-            return
+            return False
         self._submit("send_link", data, busy=False)
+        return True
+
+    def _toggle_repeat(self) -> None:
+        if self._repeat_timer.isActive():
+            self._stop_repeat()
+            return
+        if not self._send_payload():
+            return
+        self._repeat_timer.start()
+        self.repeat_button.setText("Detener")
+
+    def _repeat_send(self) -> None:
+        if not self._link_open or not self._send_payload():
+            self._stop_repeat()
+
+    def _stop_repeat(self) -> None:
+        self._repeat_timer.stop()
+        if getattr(self, "repeat_button", None) is not None:
+            self.repeat_button.setText("Enviar cada 5 segundos")
+
+    def _on_tab_changed(self, index: int) -> None:
+        if self._tabs.tabText(index) != "Enlace":
+            self._stop_repeat()
 
     def _send_ping(self) -> None:
         if not self._link_open:
