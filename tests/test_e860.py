@@ -155,7 +155,7 @@ class SwitchParamsTest(unittest.TestCase):
 
 class E860WindowTest(unittest.TestCase):
     def test_window_starts_at_channel_65_and_stops_at_80(self):
-        from PyQt6.QtWidgets import QApplication, QDialog
+        from PyQt6.QtWidgets import QApplication, QDialog, QLabel, QTabWidget
 
         from ebyte_dtu.__main__ import DeviceDialog
         from ebyte_dtu.e860_window import E860Window
@@ -175,6 +175,12 @@ class E860WindowTest(unittest.TestCase):
             self.assertEqual(window.port_baud_combo.currentData(), PC_BAUD)
             self.assertEqual(window.device_baud_combo.currentData(), PC_BAUD)
             self.assertFalse(window.enter_button.isEnabled())
+            tabs = window.findChild(QTabWidget)
+            self.assertEqual(tabs.tabText(1), "Ayuda")
+            labels = [label.text() for label in window.findChildren(QLabel)]
+            self.assertIn("Pareo de uno a uno", labels)
+            self.assertIn("PWR", labels)
+            self.assertTrue(any("Maestro: fijo." in text for text in labels))
             window._allow_any_channel = False
             window._apply_channel_range(10, keep_illegal=True)
             self.assertEqual(window.channel_spin.value(), 10)

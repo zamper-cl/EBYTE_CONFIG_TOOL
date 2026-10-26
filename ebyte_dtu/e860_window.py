@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -24,7 +25,9 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -239,6 +242,20 @@ class E860Window(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
+        tabs = QTabWidget()
+        tabs.addTab(self._build_config_tab(), "Configuración")
+        tabs.addTab(self._build_help_tab(), "Ayuda")
+        root.addWidget(tabs)
+
+        self._refresh_ports()
+        self._load_channel_policy()
+        self.apply_params(default_params())
+        self._apply_channel_range(START_CHANNEL, keep_illegal=False)
+        self._sync_buttons()
+
+    def _build_config_tab(self) -> QWidget:
+        page = QWidget()
+        root = QVBoxLayout(page)
         root.addLayout(self._build_port_row())
         notice = QLabel(
             "Conecte el RS485 del E860. El puerto de la PC abre a 115200 8N1 "
@@ -257,12 +274,81 @@ class E860Window(QMainWindow):
         self.log.setFont(_mono_font())
         self.log.setMinimumHeight(140)
         root.addWidget(self.log)
+        return page
 
-        self._refresh_ports()
-        self._load_channel_policy()
-        self.apply_params(default_params())
-        self._apply_channel_range(START_CHANNEL, keep_illegal=False)
-        self._sync_buttons()
+    def _build_help_tab(self) -> QWidget:
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.addWidget(_help_heading("Botón STATE"))
+        layout.addWidget(
+            _help_body(
+                "Mantener STATE 2 segundos entra en pareo: suena un pitido y "
+                "STATE parpadea rápido.\n"
+                "Mantenerlo más de 6 segundos vuelve a fábrica.\n"
+                "Mantenerlo también alterna entre el estado de pareo y el de "
+                "reinicio.\n"
+                "En pareo, una pulsación corta sale de ese modo.\n"
+                "Antes de repetir el pareo en otro modo, hay que volver a fábrica."
+            )
+        )
+        layout.addWidget(_help_heading("Pareo de uno a uno"))
+        layout.addWidget(
+            _help_body(
+                "Sirve para dos equipos. El DI de cada uno controla el DO del otro.\n"
+                "1. Mantener STATE del maestro 2 segundos. Un pitido y STATE parpadea.\n"
+                "2. Mantener STATE del esclavo 2 segundos. Un pitido y STATE parpadea.\n"
+                "3. El pareo es automático: los dos pitan dos veces.\n"
+                "4. Pulsar STATE en los dos para salir.\n"
+                "El maestro queda con LINK y STATE encendidos. El esclavo queda "
+                "con LINK encendido y STATE parpadeando lento.\n"
+                "Los equipos de 2, 4 y 8 canales se emparejan igual: cada DI "
+                "controla el DO del mismo número."
+            )
+        )
+        layout.addWidget(_help_heading("Pareo de uno a varios"))
+        layout.addWidget(
+            _help_body(
+                "Un maestro puede emparejar hasta 200 esclavos. El DI del maestro "
+                "controla el DO de todos los esclavos, y el DI de cualquier "
+                "esclavo controla el DO del maestro.\n"
+                "El primer esclavo tiene que tener la misma cantidad de canales "
+                "que el maestro. Los siguientes pueden tener la misma cantidad o "
+                "más; si tienen más, solo se controlan los primeros canales del maestro.\n"
+                "1. Mantener STATE del maestro 2 segundos.\n"
+                "2. Mantener STATE del primer esclavo 2 segundos. Al pitar dos "
+                "veces, pulsar STATE de ese esclavo para salir.\n"
+                "3. Repetir con cada esclavo. Al terminar el último, pulsar STATE "
+                "en el maestro y en ese esclavo.\n"
+                "El maestro queda con STATE fijo. Cada esclavo queda con STATE "
+                "parpadeando lento."
+            )
+        )
+        layout.addWidget(_help_heading("Pareo con distinta cantidad de canales"))
+        layout.addWidget(
+            _help_body(
+                "La suma de canales de los esclavos no puede pasar la del maestro. "
+                "Por ejemplo, un maestro de 8 canales admite cuatro esclavos de 2.\n"
+                "El pareo es el mismo que de uno a varios, en orden. El maestro "
+                "asigna sus canales según ese orden. Si el esclavo 1 es de 2 "
+                "canales, usa DI1, DI2, DO1 y DO2 del maestro. El esclavo 2 usa "
+                "los siguientes.\n"
+                "LINK amarillo del maestro parpadea tantas veces como esclavos "
+                "conectados, con un ciclo de 300 ms, y después queda apagado 1 s. "
+                "Tres esclavos se ven como tres destellos y una pausa."
+            )
+        )
+        layout.addWidget(_help_heading("Estados del LED"))
+        layout.addWidget(_led_table())
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        return page
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._worker.stop()
@@ -733,3 +819,63 @@ def _mono_font() -> QFont:
     font = QFont("monospace")
     font.setStyleHint(QFont.StyleHint.Monospace)
     return font
+
+
+def _help_heading(text: str) -> QLabel:
+    label = QLabel(text)
+    font = label.font()
+    font.setBold(True)
+    font.setPointSize(font.pointSize() + 1)
+    label.setFont(font)
+    return label
+
+
+def _help_body(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setWordWrap(True)
+    return label
+
+
+_LEDS = (
+    ("Indicador", "Color", "Estado"),
+    ("PWR", "Azul", "Encendido con alimentación. Apagado sin alimentación."),
+    (
+        "LINK",
+        "Amarillo",
+        "Uno a uno, o uno a varios con la misma cantidad de canales: "
+        "encendido en el maestro si hay al menos un esclavo, y encendido en "
+        "el esclavo cuando quedó conectado. Con distinta cantidad de canales, "
+        "el maestro parpadea una vez por cada esclavo (300 ms) y después se "
+        "apaga 1 s.",
+    ),
+    (
+        "STATE",
+        "Azul",
+        "Maestro: fijo. Esclavo: parpadeo lento. Pareo: parpadeo rápido. "
+        "Sin parear: apagado.",
+    ),
+    ("DI1–DI8", "Verde", "Encendido si hay entrada. Apagado si no hay entrada."),
+    (
+        "DO1–DO8",
+        "Rojo",
+        "Encendido mientras el relé está activo. Apagado si no hay salida.",
+    ),
+)
+
+
+def _led_table() -> QWidget:
+    grid = QGridLayout()
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setColumnStretch(2, 1)
+    for row, values in enumerate(_LEDS):
+        for column, value in enumerate(values):
+            label = QLabel(value)
+            label.setWordWrap(True)
+            if row == 0:
+                font = label.font()
+                font.setBold(True)
+                label.setFont(font)
+            grid.addWidget(label, row, column)
+    box = QWidget()
+    box.setLayout(grid)
+    return box
