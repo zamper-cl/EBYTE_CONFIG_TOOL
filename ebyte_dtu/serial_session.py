@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Zamper.io
 # Licensed under the GNU General Public License v3.0. See LICENSE.
-"""Puerto serie a 9600 8N1 para el modo configuración."""
+"""Puerto serie compartido por la configuración y el enlace."""
 
 from __future__ import annotations
 
@@ -84,11 +84,41 @@ class SerialSession:
         if current is not None and current.is_open:
             current.close()
 
+    def clear_input(self) -> None:
+        if self._ser is not None and self._ser.is_open:
+            self._ser.reset_input_buffer()
+
     def write(self, data: bytes) -> None:
         if not self.is_open or self._ser is None:
             raise RuntimeError("El puerto no está abierto.")
         self._ser.write(data)
         self._ser.flush()
+
+    def read_for(self, timeout: float) -> bytes:
+        """Espera el primer byte y sigue leyendo hasta un silencio breve."""
+        if not self.is_open or self._ser is None:
+            raise RuntimeError("El puerto no está abierto.")
+        previous = self._ser.timeout
+        buffer = bytearray()
+        try:
+            self._ser.timeout = timeout
+            first = self._ser.read(1)
+            if not first:
+                return b""
+            buffer.extend(first)
+            waiting = self._ser.in_waiting
+            if waiting:
+                buffer.extend(self._ser.read(waiting))
+            self._ser.timeout = 0.05
+            while True:
+                chunk = self._ser.read(1)
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+            return bytes(buffer)
+        finally:
+            if self._ser is not None:
+                self._ser.timeout = previous
 
     def read_some(self) -> bytes:
         """Lee lo que ya llegó. Si no hay nada, espera el timeout y puede devolver b''."""
