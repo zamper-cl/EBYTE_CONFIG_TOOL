@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import queue
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings, QSize, Qt, QThread, QTimer, pyqtSignal
@@ -32,6 +33,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ebyte_dtu import __version__
 from ebyte_dtu.link import (
     PING,
     PING_TIMEOUT_S,
@@ -275,7 +277,7 @@ class RadioWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Configurador E95-DTU")
+        self.setWindowTitle(f"Configurador E95-DTU {__version__}")
         self.resize(980, 720)
         self._loading = False
         self._port_open = False
@@ -353,7 +355,7 @@ class MainWindow(QMainWindow):
             self._select_combo(self.packet_rssi_combo, params.packet_rssi)
             self._select_combo(self.channel_rssi_combo, params.channel_rssi)
             self.address_spin.setValue(params.address)
-            self._apply_channel_range(params.channel, keep_illegal=True)
+            self._apply_channel_range(params.channel, keep_illegal=False)
             self.net_id_spin.setValue(params.net_id)
             self.key_spin.setValue(params.key)
             self._reserved = params.reg1_reserved
@@ -1046,7 +1048,15 @@ class MainWindow(QMainWindow):
                 self._append_log(f"Modelo reconocido en el PID: {detected}.")
         else:
             self.pid_line.setText("—")
+        reported = loaded.channel
         self.apply_params(loaded)
+        floor = self._channel_floor()
+        if reported < floor:
+            self._append_log(
+                f"El equipo informó el canal {reported}. "
+                f"El selector queda en el {self.channel_spin.value()} "
+                f"({frequency_mhz(self.channel_spin.value()):.3f} MHz)."
+            )
         self._append_log("Parámetros leídos.")
         self._on_job_finished()
 
@@ -1310,7 +1320,13 @@ def _mono_font() -> QFont:
     return font
 
 
-_IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "img"
+def _image_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "docs" / "img"
+    return Path(__file__).resolve().parents[1] / "docs" / "img"
+
+
+_IMG_DIR = _image_dir()
 
 _PARTS = (
     ("1", "Mode", "Botón de cambio de modo"),

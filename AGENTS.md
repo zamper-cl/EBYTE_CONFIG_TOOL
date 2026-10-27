@@ -1,6 +1,6 @@
 # E95-DTU and E860-DTU configurator
 
-PyQt6 program for the E95-DTU(900SL22-485), E95-DTU(900SL30-485), and E860-DTU(X0X0-900SLxx)-V2 on Linux. Startup asks which device to configure.
+PyQt6 program for the E95-DTU(900SL22-485), E95-DTU(900SL30-485), and E860-DTU(X0X0-900SLxx)-V2 on Linux and Windows. Startup asks which device to configure. The Windows `.exe` is built by `.github/workflows/windows.yml` with `ConfiguradorE95.spec`. The Debian `.deb` is built by `.github/workflows/debian.yml` with `debian/build-deb.sh`.
 
 ## Run and test
 
@@ -17,7 +17,7 @@ The system Python is externally managed. Install dependencies inside `.venv`. Th
 
 - `ebyte_dtu/protocol.py`: E95 registers `00H`–`08H`, packing, and frequency `850.125 + channel` MHz.
 - `ebyte_dtu/e860.py`: E860 AT commands. PC port defaults to 115200 8N1. Writes channel, key, then UART baud. Channel maximum is 80.
-- `ebyte_dtu/serial_session.py`: serial port. The E95 Configuration and Link tabs share one session. The E860 window has its own.
+- `ebyte_dtu/serial_session.py`: serial port. Linux lists `ttyUSB` / `ttyACM` / `ttyS`; Windows lists `COM`. The E95 Configuration and Link tabs share one session. The E860 window has its own.
 - `ebyte_dtu/link.py`: text, hexadecimal, Modbus CRC16, and ping-pong (`ping` / `pong`). The E860 has no link tab.
 - `ebyte_dtu/window.py`: E95 window, tabs, and the option for channels below 915 MHz.
 - `ebyte_dtu/e860_window.py`: E860 window. It reads the same channel option.

@@ -169,5 +169,28 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(frequency_mhz(channel), 915.125)
 
 
+class E95WindowChannelTest(unittest.TestCase):
+    def test_channel_starts_at_65_and_a_lower_value_does_not_stick(self):
+        from PyQt6.QtWidgets import QApplication
+
+        from ebyte_dtu.window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        window = MainWindow()
+        try:
+            self.assertEqual(window.channel_spin.value(), 65)
+            self.assertEqual(window.channel_frequency.text(), "915.125 MHz")
+            window._allow_any_channel = False
+            window.apply_params(RadioParams(channel=18))
+            self.assertEqual(window.channel_spin.value(), 65)
+            self.assertEqual(window.channel_frequency.text(), "915.125 MHz")
+            window._allow_any_channel = True
+            window.apply_params(RadioParams(channel=18))
+            self.assertEqual(window.channel_spin.value(), 18)
+        finally:
+            window.close()
+            app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()

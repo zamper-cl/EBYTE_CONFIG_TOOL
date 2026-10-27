@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ebyte_dtu import __version__
 from ebyte_dtu.e860_window import E860Window
 from ebyte_dtu.window import MainWindow
 
@@ -21,7 +22,9 @@ class DeviceDialog(QDialog):
         self.setWindowTitle("Elegir equipo")
         self.choice: str | None = None
         layout = QVBoxLayout(self)
-        label = QLabel("Seleccione el equipo que quiere configurar.")
+        label = QLabel(
+            f"Seleccione el equipo que quiere configurar. Versión {__version__}."
+        )
         label.setWordWrap(True)
         layout.addWidget(label)
         row = QHBoxLayout()

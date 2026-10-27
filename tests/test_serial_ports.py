@@ -2,7 +2,7 @@
 # Licensed under the GNU General Public License v3.0. See LICENSE.
 import unittest
 
-from ebyte_dtu.serial_session import preferred_port
+from ebyte_dtu.serial_session import _port_sort_key, preferred_port
 
 
 class PreferredPortTest(unittest.TestCase):
@@ -20,3 +20,12 @@ class PreferredPortTest(unittest.TestCase):
         self.assertEqual(preferred_port(ports, "/dev/ttyACM0"), "/dev/ttyACM0")
         self.assertEqual(preferred_port(ports, None), "/dev/ttyS0")
         self.assertIsNone(preferred_port([], None))
+
+    def test_keeps_current_com_port(self):
+        ports = ["COM1", "COM3", "COM10"]
+        self.assertEqual(preferred_port(ports, "COM3"), "COM3")
+        self.assertEqual(preferred_port(ports, None), "COM1")
+
+    def test_com_ports_sort_by_number(self):
+        names = ["COM10", "COM2", "COM1"]
+        self.assertEqual(sorted(names, key=_port_sort_key), ["COM1", "COM2", "COM10"])

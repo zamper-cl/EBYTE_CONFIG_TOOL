@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ebyte_dtu import __version__
 from ebyte_dtu.e860 import (
     AIR_SPEEDS,
     AT_TIMEOUT_S,
@@ -212,7 +213,7 @@ class E860Worker(QThread):
 class E860Window(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Configurador E860-DTU")
+        self.setWindowTitle(f"Configurador E860-DTU {__version__}")
         self.resize(980, 720)
         self._loading = False
         self._port_open = False

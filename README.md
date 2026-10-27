@@ -1,6 +1,6 @@
 # Configurador E95-DTU y E860-DTU
 
-Programa de escritorio para configurar el radio E95-DTU(900SL22-485), el E95-DTU(900SL30-485) y el interruptor inalámbrico E860-DTU(X0X0-900SLxx)-V2 en Linux. Reemplaza la configuración local del software oficial de Ebyte, que no funciona bien en este sistema.
+Programa de escritorio para configurar el radio E95-DTU(900SL22-485), el E95-DTU(900SL30-485) y el interruptor inalámbrico E860-DTU(X0X0-900SLxx)-V2 en Linux y Windows. La versión 1.2.0 es el primer estable. Reemplaza la configuración local del software oficial de Ebyte, que no funciona bien en Linux.
 
 Al abrir pregunta qué equipo se va a usar. La interfaz está hecha con PyQt6 y habla con el equipo por el puerto serie.
 
@@ -34,6 +34,32 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m ebyte_dtu
 ```
+
+## Ejecutable de Windows
+
+El `.exe` se arma en GitHub Actions, no en Linux. Tras un push a `main` o un disparo manual, el artefacto `ConfiguradorE95-windows` queda en la pestaña Actions.
+
+En una PC con Windows:
+
+```bat
+python -m pip install -r requirements-build.txt
+pyinstaller --noconfirm ConfiguradorE95.spec
+```
+
+El archivo queda en `dist\ConfiguradorE95.exe`. El empaquetado incluye la licencia GPL-3.0.
+
+## Paquete Debian
+
+El `.deb` se arma en GitHub Actions sobre Debian Bookworm. Tras un push a `main` o un disparo manual, el artefacto `ConfiguradorE95-debian` queda en la pestaña Actions.
+
+En una máquina Debian o derivada:
+
+```bash
+bash debian/build-deb.sh
+sudo apt install ./dist/configurador-e95_1.2.0_all.deb
+```
+
+El paquete instala el comando `configurador-e95` y depende de `python3-pyqt6` y `python3-serial`. El usuario tiene que estar en el grupo `dialout`.
 
 ## Uso del E95
 

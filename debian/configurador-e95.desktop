@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Configurador E95-DTU
+Comment=Configura el E95-DTU y el E860-DTU
+Exec=configurador-e95
+Terminal=false
+Categories=Utility;
+StartupNotify=true

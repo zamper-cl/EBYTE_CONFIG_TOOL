@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import glob
+import sys
 
 import serial
 
@@ -19,10 +20,28 @@ _PARITY = {
 
 
 def list_ports() -> list[str]:
+    if sys.platform == "win32":
+        return _list_windows_ports()
     ports: list[str] = []
     for pattern in _PORT_PATTERNS:
         ports.extend(sorted(glob.glob(pattern)))
     return ports
+
+
+def _list_windows_ports() -> list[str]:
+    from serial.tools.list_ports import comports
+
+    return sorted((port.device for port in comports()), key=_port_sort_key)
+
+
+def _port_sort_key(name: str) -> tuple:
+    label = name.rsplit("\\", 1)[-1]
+    if label.upper().startswith("COM"):
+        try:
+            return (0, int(label[3:]))
+        except ValueError:
+            return (1, label)
+    return (1, name)
 
 
 def preferred_port(ports: list[str], current: str | None = None) -> str | None:
